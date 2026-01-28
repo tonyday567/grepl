@@ -12,7 +12,17 @@ main = do
   threadDelay 8000000  -- 8 seconds
 
   putStrLn "\nQuery 1: :t fmap"
+
+  -- Debug: check file before query
+  before <- readFile "/tmp/ghci-out.txt"
+  putStrLn $ "  Before: " ++ show (length (lines before)) ++ " lines"
+
   result1 <- queryRepl ":t fmap" "fmap ::"
+
+  -- Debug: check file after query
+  after <- readFile "/tmp/ghci-out.txt"
+  putStrLn $ "  After: " ++ show (length (lines after)) ++ " lines"
+
   case result1 of
     Just t -> putStrLn $ "  ✓ " ++ t
     Nothing -> putStrLn "  ✗ timeout"

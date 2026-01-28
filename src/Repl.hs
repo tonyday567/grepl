@@ -5,7 +5,8 @@ module Repl
 
 import System.Process
 import System.IO
-import Control.Concurrent (threadDelay, forkIO)
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (race, async)
 import Data.List (isInfixOf)
 
 -- | Start a cabal repl session with file-based stdio.
@@ -30,13 +31,13 @@ startRepl projectDir = do
   outHandle <- openFile "/tmp/ghci-out.txt" WriteMode
   errHandle <- openFile "/tmp/ghci-err.txt" WriteMode
 
-  -- Set line buffering so output appears immediately
-  hSetBuffering outHandle LineBuffering
-  hSetBuffering errHandle LineBuffering
+  -- Set no buffering for immediate output
+  hSetBuffering outHandle NoBuffering
+  hSetBuffering errHandle NoBuffering
   hSetBuffering inWriteHandle LineBuffering
 
-  -- Spawn a thread that reads from /tmp/ghci-in.txt and writes to the pipe
-  _ <- forkIO $ inputThread inWriteHandle
+  -- Spawn single input watcher thread (using async)
+  _ <- async (inputWatcher inWriteHandle)
 
   -- Create the process specification
   let procSpec = (shell "cabal repl")
@@ -49,15 +50,18 @@ startRepl projectDir = do
   -- Spawn the process
   (_, _, _, ph) <- createProcess procSpec
 
+  -- Note: Keep handles open so process can write throughout its lifetime
+
   return ph
 
--- | Thread that reads from /tmp/ghci-in.txt and writes to the stdin pipe.
--- Polls the input file for new lines and forwards them to the process.
-inputThread :: Handle -> IO ()
-inputThread writeHandle = loop 0
+-- | Single input watcher thread.
+-- Reads from /tmp/ghci-in.txt and writes to the stdin pipe.
+-- Runs continuously, polling input file at relaxed 500ms intervals.
+inputWatcher :: Handle -> IO ()
+inputWatcher writeHandle = loop 0
   where
     loop linesSeen = do
-      threadDelay 50000  -- 50ms polling interval
+      threadDelay 500000  -- 500ms (reduced polling, less contention)
 
       -- Read current input file
       input <- readFile "/tmp/ghci-in.txt"
@@ -72,34 +76,50 @@ inputThread writeHandle = loop 0
 
 -- | Query the running REPL instance.
 --
--- Appends the query to /tmp/ghci-in.txt, then polls /tmp/ghci-out.txt
--- for a response matching the expected pattern.
+-- Appends the query to /tmp/ghci-in.txt, then waits for a response
+-- matching the expected pattern using race (3-second timeout).
 --
 -- Returns Just the response if found within 3 seconds, Nothing on timeout.
 queryRepl :: String -> String -> IO (Maybe String)
 queryRepl query expectPattern = do
-  -- Count lines in output file before query
+  -- Get baseline line count
   outputBefore <- readFile "/tmp/ghci-out.txt"
   let linesBefore = length (lines outputBefore)
 
-  -- Append query to input file
+  -- Append query to input file (input watcher will see it)
   appendFile "/tmp/ghci-in.txt" (query ++ "\n")
 
-  -- Poll for response (60 attempts, 50ms each = 3 seconds)
-  tryUntilFound 60 linesBefore
+  -- Race: timeout vs wait for response pattern
+  result <- race
+    (threadDelay 3000000)  -- 3 second timeout
+    (waitForPattern linesBefore expectPattern)
 
+  case result of
+    Left () -> return Nothing           -- timeout
+    Right resp -> return (Just resp)    -- got response
+
+-- | Wait for expected pattern in output file.
+-- Polls output file looking for new lines containing the pattern.
+waitForPattern :: Int -> String -> IO String
+waitForPattern linesBefore expectPattern = loop 0
   where
-    tryUntilFound :: Int -> Int -> IO (Maybe String)
-    tryUntilFound 0 _ = return Nothing
-    tryUntilFound attempts linesBefore = do
-      threadDelay 50000  -- 50ms
+    loop attempts
+      | attempts > 60 = fail "waitForPattern: max attempts exceeded"
+      | otherwise = do
+          threadDelay 50000  -- 50ms poll
 
-      -- Read current output
-      output <- readFile "/tmp/ghci-out.txt"
-      let currentLines = lines output
-      let linesAfter = drop linesBefore currentLines
+          -- Read current output (plain read should work with keep-open handles)
+          output <- readFile "/tmp/ghci-out.txt"
+          let allLines = lines output
+          let newLines = drop linesBefore allLines
 
-      -- Check if we have new lines with the expected pattern
-      case filter (expectPattern `isInfixOf`) linesAfter of
-        [] -> tryUntilFound (attempts - 1) linesBefore  -- Not found yet
-        matches -> return $ Just (unlines matches)  -- Found it
+          -- Check for pattern in new lines
+          case filter (expectPattern `isInfixOf`) newLines of
+            [] -> loop (attempts + 1)         -- Not found yet, keep polling
+            matches -> return (unlines matches) -- Found it
+
+-- | Strictly read a file (forces immediate evaluation, sees fresh content)
+readFileStrict :: FilePath -> IO String
+readFileStrict path = withFile path ReadMode $ \h -> do
+  content <- hGetContents h
+  length content `seq` return content
