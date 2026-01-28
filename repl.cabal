@@ -1,0 +1,41 @@
+cabal-version: 3.0
+name: repl
+version: 0.1.0.0
+license: BSD-3-Clause
+license-file: LICENSE
+copyright: (c) 2026
+category: language
+author: Anonymous
+maintainer: tonyday567@gmail.com
+synopsis: Query tool for GHCi sessions
+description:
+  File-based message passing protocol for querying GHCi instances.
+  Used for agentic type wrangling and interactive code exploration.
+
+build-type: Simple
+
+tested-with:
+  ghc ==9.14.1
+
+common ghc-options-stanza
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Widentities
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wpartial-fields
+    -Wredundant-constraints
+
+common ghc2024-stanza
+  default-language: GHC2024
+
+library
+  import: ghc-options-stanza
+  import: ghc2024-stanza
+  hs-source-dirs: src
+  build-depends:
+    base >=4.14 && <5,
+    process >=1.6 && <1.7
+  exposed-modules:
+    Repl
