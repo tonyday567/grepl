@@ -1,9 +1,12 @@
 module Repl
   ( startRepl
+  , queryRepl
   ) where
 
 import System.Process
 import System.IO
+import Control.Concurrent (threadDelay)
+import Data.List (isInfixOf)
 
 -- | Start a cabal repl session with file-based stdio.
 --
@@ -42,3 +45,37 @@ startRepl projectDir = do
   (_, _, _, ph) <- createProcess procSpec
 
   return ph
+
+-- | Query the running REPL instance.
+--
+-- Appends the query to /tmp/ghci-in.txt, then polls /tmp/ghci-out.txt
+-- for a response matching the expected pattern.
+--
+-- Returns Just the response if found within 2 seconds, Nothing on timeout.
+queryRepl :: String -> String -> IO (Maybe String)
+queryRepl query expectPattern = do
+  -- Count lines in output file before query
+  outputBefore <- readFile "/tmp/ghci-out.txt"
+  let linesBefore = length (lines outputBefore)
+
+  -- Append query to input file
+  appendFile "/tmp/ghci-in.txt" (query ++ "\n")
+
+  -- Poll for response (20 attempts, 100ms each = 2 seconds)
+  tryUntilFound 20 linesBefore
+
+  where
+    tryUntilFound :: Int -> Int -> IO (Maybe String)
+    tryUntilFound 0 _ = return Nothing
+    tryUntilFound attempts linesBefore = do
+      threadDelay 100000  -- 100ms
+
+      -- Read current output
+      output <- readFile "/tmp/ghci-out.txt"
+      let currentLines = lines output
+      let linesAfter = drop linesBefore currentLines
+
+      -- Check if we have new lines with the expected pattern
+      case filter (expectPattern `isInfixOf`) linesAfter of
+        [] -> tryUntilFound (attempts - 1) linesBefore  -- Not found yet
+        matches -> return $ Just (unlines matches)  -- Found it
