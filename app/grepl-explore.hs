@@ -4,7 +4,7 @@
 -- | basic measurement and callibration
 module Main where
 
-import Repl
+import Grepl
 import Data.List (intercalate, nub)
 import GHC.Generics
 import Optics.Core

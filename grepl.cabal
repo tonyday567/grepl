@@ -1,5 +1,5 @@
 cabal-version: 3.0
-name: mgrepl
+name: grepl
 version: 0.1.0.0
 license: BSD-3-Clause
 license-file: LICENSE
@@ -7,7 +7,7 @@ copyright: (c) 2026
 category: language
 author: Anonymous
 maintainer: tonyday567@gmail.com
-synopsis: Query tool for GHCi sessions
+synopsis: General REPL - Query tool for GHCi sessions
 description:
   File-based message passing protocol for querying GHCi instances.
   Used for agentic type wrangling and interactive code exploration.
@@ -36,17 +36,17 @@ library
     process >=1.6 && <1.7,
     async >=2.2 && <2.3
   exposed-modules:
-    Repl
+    Grepl
 
-executable repl-explore
+executable grepl-explore
   import: ghc-options-stanza
   default-language: GHC2024
   hs-source-dirs: app
-  main-is: repl-explore.hs
+  main-is: grepl-explore.hs
   build-depends:
     base >=4.14 && <5,
     process >=1.6 && <1.7,
     async >=2.2 && <2.3,
     optparse-applicative >=0.17 && <0.20,
     perf,
-    mgrepl
+    grepl

@@ -1,4 +1,4 @@
-module Repl
+module Grepl
   ( ChannelConfig (..)
   , defaultChannelConfig
   , exeChannelConfig
@@ -34,7 +34,7 @@ defaultChannelConfig = ChannelConfig
 -- | Executable channel configuration
 exeChannelConfig :: ChannelConfig
 exeChannelConfig = ChannelConfig
-  { processCommand = "cabal repl repl-explore"
+  { processCommand = "cabal repl grepl-explore"
   , projectDir = "."
   , stdinPath = "/tmp/ghci-in-exe"
   , stdoutPath = "./log/cabal-repl-exe-stdout.md"

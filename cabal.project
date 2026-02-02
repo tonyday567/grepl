@@ -1,5 +1,5 @@
 packages:
-  repl.cabal
+  grepl.cabal
   ../perf/perf.cabal
 
 allow-newer: indexed-traversable:base, *:base
