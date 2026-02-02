@@ -1,1 +1,7 @@
-packages: .
+packages:
+  repl.cabal
+  ../perf/perf.cabal
+
+allow-newer: indexed-traversable:base, *:base
+
+

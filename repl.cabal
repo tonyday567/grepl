@@ -1,5 +1,5 @@
 cabal-version: 3.0
-name: repl
+name: mgrepl
 version: 0.1.0.0
 license: BSD-3-Clause
 license-file: LICENSE
@@ -27,12 +27,9 @@ common ghc-options-stanza
     -Wpartial-fields
     -Wredundant-constraints
 
-common ghc2024-stanza
-  default-language: GHC2024
-
 library
   import: ghc-options-stanza
-  import: ghc2024-stanza
+  default-language: GHC2024
   hs-source-dirs: src
   build-depends:
     base >=4.14 && <5,
@@ -41,11 +38,15 @@ library
   exposed-modules:
     Repl
 
-executable test-repl
+executable repl-explore
   import: ghc-options-stanza
-  import: ghc2024-stanza
-  hs-source-dirs: test
-  main-is: Main.hs
+  default-language: GHC2024
+  hs-source-dirs: app
+  main-is: repl-explore.hs
   build-depends:
     base >=4.14 && <5,
-    repl
+    process >=1.6 && <1.7,
+    async >=2.2 && <2.3,
+    optparse-applicative >=0.17 && <0.20,
+    perf,
+    mgrepl
