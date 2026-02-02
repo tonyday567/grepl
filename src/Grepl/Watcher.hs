@@ -5,7 +5,8 @@ module Grepl.Watcher
 
 import System.FSNotify
 import System.FilePath (takeExtension)
-import Control.Concurrent.Async (async, forever)
+import Control.Concurrent.Async (async)
+import Control.Monad (forever)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (TChan, newTChanIO, writeTChan, atomically)
 import Data.Maybe (isJust)

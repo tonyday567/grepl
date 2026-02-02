@@ -13,6 +13,7 @@ import Options.Applicative.Help.Pretty
 import Perf
 import Prelude
 import Control.Monad
+import Control.Monad.IO.Class (liftIO)
 import System.IO
 import Control.Concurrent
 import Control.Concurrent.Async (async)
