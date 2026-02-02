@@ -7,6 +7,7 @@ module Grepl
 
 import System.Process
 import System.IO
+import System.Directory (doesFileExist)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race, async)
 import Data.List (isInfixOf)
@@ -41,13 +42,26 @@ exeChannelConfig = ChannelConfig
   , stderrPath = "./log/cabal-repl-exe-stderr.md"
   }
 
+-- | Ensure a FIFO exists, creating it if necessary
+ensureFifo :: FilePath -> IO ()
+ensureFifo path = do
+  exists <- doesFileExist path
+  unless exists $ do
+    callProcess "mkfifo" [path]
+  where
+    unless p x = if p then pure () else x
+
 -- | Start a cabal repl session with named pipes
 --
+-- Creates stdin FIFO if it doesn't exist.
 -- Opens handles for stdin (FIFO), stdout, and stderr (append mode).
 -- Spawns the process with those handles wired.
 -- Returns a ProcessHandle to the running process.
 channel :: ChannelConfig -> IO ProcessHandle
 channel cfg = do
+  -- Create stdin FIFO if it doesn't exist
+  ensureFifo (stdinPath cfg)
+  
   -- Open stdin FIFO for reading
   stdinHandle <- openFile (stdinPath cfg) ReadMode
   

@@ -7,12 +7,13 @@ module Main where
 import Grepl
 import Grepl.Watcher
 import Data.List (intercalate, nub)
+import Data.Time (getCurrentTime)
 import GHC.Generics
 import Options.Applicative
 import Options.Applicative.Help.Pretty
 import Perf
 import Prelude
-import Control.Monad
+import Control.Monad (forever)
 import Control.Monad.IO.Class (liftIO)
 import System.IO
 import Control.Concurrent
@@ -20,7 +21,7 @@ import Control.Concurrent.Async (async)
 import Control.Concurrent.STM (TChan, atomically, readTChan)
 import System.FilePath (takeDirectory)
 
-data Run = RunChannel | RunChannelExe | RunBenchmark deriving (Eq, Show)
+data Run = RunChannel | RunChannelExe | RunBenchmark | RunWatcher deriving (Eq, Show)
 
 data AppConfig = AppConfig
   { appRun :: Run,
@@ -37,6 +38,7 @@ parseRun =
   flag' RunChannel (long "channel" <> help "run default channel (default)")
     <|> flag' RunChannelExe (long "exe" <> help "run exe channel config")
     <|> flag' RunBenchmark (long "benchmark" <> help "run benchmark mode")
+    <|> flag' RunWatcher (long "watch" <> help "watch log directory for changes (debug)")
     <|> pure RunChannel
 
 appParser :: AppConfig -> Parser AppConfig
@@ -74,6 +76,7 @@ main = do
     RunChannel -> runChannel (keepAliveSeconds config) defaultChannelConfig
     RunChannelExe -> runChannel (keepAliveSeconds config) exeChannelConfig
     RunBenchmark -> runBenchmark (appReportOptions config)
+    RunWatcher -> runWatcher
 
 runChannel :: Int -> ChannelConfig -> IO ()
 runChannel keepAlive cfg = do
@@ -121,3 +124,19 @@ benchmarkChannelLatency outChan = do
   -- Wait for watcher to signal file change (blocks until TChan receives)
   _ <- liftIO $ atomically $ readTChan outChan
   pure ()
+
+-- | Debug mode: watch log directory and print file change events
+runWatcher :: IO ()
+runWatcher = do
+  hPutStrLn stderr "Starting watcher on ./log/ directory..."
+  
+  outChan <- watchMarkdown "./log"
+  hPutStrLn stderr "✓ Watcher started"
+  
+  hPutStrLn stderr "Watching for .md file changes. Press Ctrl-C to stop."
+  hPutStrLn stderr ""
+  
+  -- Print every file change event
+  forever $ do
+    fp <- atomically $ readTChan outChan
+    getCurrentTime >>= \now -> hPutStrLn stderr $ "[" ++ show now ++ "] Modified: " ++ fp
