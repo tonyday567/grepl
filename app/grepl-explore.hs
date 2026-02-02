@@ -19,6 +19,7 @@ import System.IO
 import Control.Concurrent
 import Control.Concurrent.Async (async)
 import Control.Concurrent.STM (TChan, atomically, readTChan)
+import System.Timeout (timeout)
 import System.FilePath (takeDirectory)
 
 data Run = RunChannel | RunChannelExe | RunBenchmark | RunWatcher deriving (Eq, Show)
@@ -99,6 +100,9 @@ runBenchmark repOptions = do
   hPutStrLn stderr "✓ Channel started"
   
   let logDir = takeDirectory (stdoutPath benchChannelConfig)
+  hPutStrLn stderr $ "  Watching directory: " ++ logDir
+  hPutStrLn stderr $ "  Log file: " ++ stdoutPath benchChannelConfig
+  
   outChan <- watchMarkdown logDir
   hPutStrLn stderr "✓ Watcher started"
   
@@ -121,9 +125,15 @@ benchmarkChannelLatency outChan = do
     hFlush inHandle
     hClose inHandle
   
-  -- Wait for watcher to signal file change (blocks until TChan receives)
-  _ <- liftIO $ atomically $ readTChan outChan
-  pure ()
+  -- Wait for watcher to signal file change (timeout after 3 seconds)
+  mResult <- liftIO $ timeout 3000000 $ atomically $ readTChan outChan
+  case mResult of
+    Just _fp -> do
+      liftIO $ hPutStrLn stderr $ "  ✓ Signal received: " ++ show _fp
+      pure ()
+    Nothing -> do
+      liftIO $ hPutStrLn stderr $ "  ✗ Timeout waiting for watcher signal"
+      pure ()
 
 -- | Debug mode: watch log directory and print file change events
 runWatcher :: IO ()
