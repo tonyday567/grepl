@@ -34,9 +34,13 @@ library
   build-depends:
     base >=4.14 && <5,
     process >=1.6 && <1.7,
-    async >=2.2 && <2.3
+    async >=2.2 && <2.3,
+    fsnotify >=0.4 && <0.5,
+    stm >=2.5 && <2.6,
+    filepath >=1.4 && <1.5
   exposed-modules:
-    Grepl
+    Grepl,
+    Grepl.Watcher
 
 executable grepl-explore
   import: ghc-options-stanza

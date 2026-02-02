@@ -7,7 +7,6 @@ module Main where
 import Grepl
 import Data.List (intercalate, nub)
 import GHC.Generics
-import Optics.Core
 import Options.Applicative
 import Options.Applicative.Help.Pretty
 import Perf
@@ -44,7 +43,7 @@ appParser def =
           <> short 'k'
           <> value (keepAliveSeconds def)
           <> help "How long to keep channel alive in seconds (default: 600)")
-    <*> parseReportOptions (view #appReportOptions def)
+    <*> parseReportOptions (appReportOptions def)
 
 appConfig :: AppConfig -> ParserInfo AppConfig
 appConfig def =
