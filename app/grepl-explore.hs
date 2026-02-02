@@ -5,8 +5,8 @@
 module Main where
 
 import Grepl
+import Grepl.Watcher
 import Data.List (intercalate, nub)
-import Data.Time (getCurrentTime, diffUTCTime)
 import GHC.Generics
 import Options.Applicative
 import Options.Applicative.Help.Pretty
@@ -15,7 +15,9 @@ import Prelude
 import Control.Monad
 import System.IO
 import Control.Concurrent
-import qualified Data.Text.IO as TIO
+import Control.Concurrent.Async (async)
+import Control.Concurrent.STM (TChan, atomically, readTChan)
+import System.FilePath (takeDirectory)
 
 data Run = RunChannel | RunChannelExe | RunBenchmark deriving (Eq, Show)
 
@@ -53,6 +55,16 @@ appConfig def =
     (appParser def <**> helper)
     (fullDesc <> progDesc "Interactive GHCi channel via named pipes" <> header "repl-explore - test harness for cabal-repl channel")
 
+-- | Separate channel config for benchmarking (isolated from default channel)
+benchChannelConfig :: ChannelConfig
+benchChannelConfig = ChannelConfig
+  { processCommand = "cabal repl"
+  , projectDir = "."
+  , stdinPath = "/tmp/ghci-bench-in"
+  , stdoutPath = "./log/cabal-repl-bench-stdout.md"
+  , stderrPath = "./log/cabal-repl-bench-stderr.md"
+  }
+
 main :: IO ()
 main = do
   config <- execParser (appConfig defaultAppConfig)
@@ -78,59 +90,33 @@ runBenchmark :: ReportOptions -> IO ()
 runBenchmark repOptions = do
   hPutStrLn stderr "Starting benchmark (channel I/O latency)..."
   
-  -- Start channel in background
-  h <- channel defaultChannelConfig
+  -- Set up channel and watcher in separate async threads
+  _ <- async $ channel benchChannelConfig
   hPutStrLn stderr "✓ Channel started"
   
-  -- Give GHCi time to settle
+  let logDir = takeDirectory (stdoutPath benchChannelConfig)
+  outChan <- watchMarkdown logDir
+  hPutStrLn stderr "✓ Watcher started"
+  
+  -- Give everything time to settle
   threadDelay 1000000
   
-  -- Run the benchmark
-  reportMain repOptions "grepl-channel-latency" benchmarkChannelLatency
+  -- Run the benchmark (single iteration, \_ ignores length parameter)
+  reportMain repOptions "grepl-channel-latency" $ \_ -> benchmarkChannelLatency outChan
 
--- | Benchmark: measure latency of writing a query and polling for response
--- Int param: number of queries to send
-benchmarkChannelLatency :: Int -> PerfT IO [[Double]] ()
-benchmarkChannelLatency n = do
-  let inPath = stdinPath defaultChannelConfig
-  let outPath = stdoutPath defaultChannelConfig
+-- | Benchmark: measure latency from writing query to receiving file change signal
+-- Ignores length param (single run per invocation by reportMain)
+benchmarkChannelLatency :: TChan String -> PerfT IO [[Double]] ()
+benchmarkChannelLatency outChan = do
+  let inPath = stdinPath benchChannelConfig
   
-  -- Send n queries and measure total time
-  forM_ [1..n] $ \i -> do
-    let query = ":t id -- q" ++ show i ++ "\n"
-    let marker = "-- q" ++ show i
-    
-    -- Write query to FIFO
-    liftIO $ do
-      inHandle <- openFile inPath WriteMode
-      hPutStr inHandle query
-      hFlush inHandle
-      hClose inHandle
-    
-    -- Poll for response (up to 5 seconds, 10ms intervals)
-    liftIO $ pollForMarker outPath marker 500 10000
-
--- | Poll output file for a marker string, return when found or timeout
-pollForMarker :: FilePath -> String -> Int -> Int -> IO ()
-pollForMarker outPath marker maxPolls pollIntervalUs = loop 0
-  where
-    loop pollCount
-      | pollCount >= maxPolls = do
-          hPutStrLn stderr $ "✗ Timeout waiting for: " ++ marker
-      | otherwise = do
-          content <- TIO.readFile outPath
-          if marker `isInfixOf` content
-            then pure ()
-            else do
-              threadDelay pollIntervalUs
-              loop (pollCount + 1)
-    
-    -- Simple substring search
-    isInfixOf needle haystack = 
-      needle `isSubstringOf` haystack
-    
-    isSubstringOf [] _ = True
-    isSubstringOf _ [] = False
-    isSubstringOf s@(x:xs) (y:ys)
-      | x == y = isSubstringOf xs ys
-      | otherwise = isSubstringOf s ys
+  -- Write query to input FIFO
+  liftIO $ do
+    inHandle <- openFile inPath WriteMode
+    hPutStrLn inHandle ":t id"
+    hFlush inHandle
+    hClose inHandle
+  
+  -- Wait for watcher to signal file change (blocks until TChan receives)
+  _ <- liftIO $ atomically $ readTChan outChan
+  pure ()
