@@ -12,12 +12,20 @@ import Control.Concurrent.STM (TChan, newTChanIO, writeTChan, atomically)
 import Data.Maybe (isJust)
 import Data.List (isInfixOf)
 
--- | Filter for .md file events (Added or Modified only, excluding stderr files)
+-- | Check if filename is markdown (.md extension)
+isMarkdownFile :: FilePath -> Bool
+isMarkdownFile fp = takeExtension fp == ".md"
+
+-- | Check if filename is stdout (not stderr)
+isStdout :: FilePath -> Bool
+isStdout fp = not ("stderr" `isInfixOf` takeFileName fp)
+
+-- | Filter for .md file events (Added or Modified only, stdout files only)
 isMarkdownEvent :: Event -> Maybe FilePath
 isMarkdownEvent (Added fp _ IsFile) = 
-  if takeExtension fp == ".md" && not ("stderr" `isInfixOf` takeFileName fp) then Just fp else Nothing
+  if isMarkdownFile fp && isStdout fp then Just fp else Nothing
 isMarkdownEvent (Modified fp _ IsFile) = 
-  if takeExtension fp == ".md" && not ("stderr" `isInfixOf` takeFileName fp) then Just fp else Nothing
+  if isMarkdownFile fp && isStdout fp then Just fp else Nothing
 isMarkdownEvent _ = Nothing
 
 -- | Watch a directory for .md file changes, push filepaths to a TChan
