@@ -4,19 +4,20 @@ module Grepl.Watcher
   ) where
 
 import System.FSNotify
-import System.FilePath (takeExtension)
+import System.FilePath (takeExtension, takeFileName)
 import Control.Concurrent.Async (async)
 import Control.Monad (forever)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM (TChan, newTChanIO, writeTChan, atomically)
 import Data.Maybe (isJust)
+import Data.List (isInfixOf)
 
--- | Filter for .md file events (Added or Modified only)
+-- | Filter for .md file events (Added or Modified only, excluding stderr files)
 isMarkdownEvent :: Event -> Maybe FilePath
 isMarkdownEvent (Added fp _ IsFile) = 
-  if takeExtension fp == ".md" then Just fp else Nothing
+  if takeExtension fp == ".md" && not ("stderr" `isInfixOf` takeFileName fp) then Just fp else Nothing
 isMarkdownEvent (Modified fp _ IsFile) = 
-  if takeExtension fp == ".md" then Just fp else Nothing
+  if takeExtension fp == ".md" && not ("stderr" `isInfixOf` takeFileName fp) then Just fp else Nothing
 isMarkdownEvent _ = Nothing
 
 -- | Watch a directory for .md file changes, push filepaths to a TChan

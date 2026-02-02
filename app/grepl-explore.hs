@@ -93,47 +93,34 @@ runChannel keepAlive cfg = do
 
 runBenchmark :: ReportOptions -> IO ()
 runBenchmark repOptions = do
-  hPutStrLn stderr "Starting benchmark (channel I/O latency)..."
-  
   -- Set up channel and watcher in separate async threads
   _ <- async $ channel benchChannelConfig
-  hPutStrLn stderr "✓ Channel started"
   
   let logDir = takeDirectory (stdoutPath benchChannelConfig)
-  hPutStrLn stderr $ "  Watching directory: " ++ logDir
-  hPutStrLn stderr $ "  Log file: " ++ stdoutPath benchChannelConfig
-  
   outChan <- watchMarkdown logDir
-  hPutStrLn stderr "✓ Watcher started"
   
   -- Give everything time to settle
   threadDelay 1000000
   
-  -- Run the benchmark (single iteration, \_ ignores length parameter)
-  reportMain repOptions "grepl-channel-latency" $ \_ -> benchmarkChannelLatency outChan
+  -- Run the benchmark
+  reportMain repOptions "grepl-channel-latency" $ \_ -> fam "throughput" (benchmarkChannelThroughput outChan)
 
 -- | Benchmark: measure latency from writing query to receiving file change signal
--- Ignores length param (single run per invocation by reportMain)
-benchmarkChannelLatency :: TChan String -> PerfT IO [[Double]] ()
-benchmarkChannelLatency outChan = do
+benchmarkChannelThroughput :: TChan String -> IO ()
+benchmarkChannelThroughput outChan = do
   let inPath = stdinPath benchChannelConfig
   
   -- Write query to input FIFO
-  liftIO $ do
-    inHandle <- openFile inPath WriteMode
-    hPutStrLn inHandle ":t id"
-    hFlush inHandle
-    hClose inHandle
+  inHandle <- openFile inPath WriteMode
+  hPutStrLn inHandle ":t id"
+  hFlush inHandle
+  hClose inHandle
   
   -- Wait for watcher to signal file change (timeout after 3 seconds)
-  mResult <- liftIO $ timeout 3000000 $ atomically $ readTChan outChan
+  mResult <- timeout 3000000 $ atomically $ readTChan outChan
   case mResult of
-    Just _fp -> do
-      liftIO $ hPutStrLn stderr $ "  ✓ Signal received: " ++ show _fp
-      pure ()
-    Nothing -> do
-      liftIO $ hPutStrLn stderr $ "  ✗ Timeout waiting for watcher signal"
-      pure ()
+    Just fp -> hPutStrLn stderr $ "Signal: " ++ fp
+    Nothing -> hPutStrLn stderr "Timeout"
 
 -- | Debug mode: watch log directory and print file change events
 runWatcher :: IO ()
