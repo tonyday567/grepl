@@ -1,3 +1,33 @@
+-- |
+-- Module      : Grepl.Watcher
+-- Copyright   : (c) 2026 Tony Day
+-- License     : BSD-3-Clause
+-- Maintainer  : tonyday567@gmail.com
+--
+-- File watching utilities for monitoring markdown output logs from GHCi sessions.
+--
+-- = Overview
+--
+-- @Grepl.Watcher@ watches a directory for markdown (.md) file changes,
+-- enabling agents to react to GHCi query results as they appear in logs.
+--
+-- Uses FSNotify to detect file events and streams filepaths through a
+-- 'TChan', allowing agents to coordinate queries and responses in real-time.
+--
+-- = Usage
+--
+-- Watch a directory and react to changes:
+--
+-- > import Grepl.Watcher
+-- > chan <- watchMarkdown "./log"
+-- > -- Now read file paths from chan as markdown files are modified
+--
+-- Or provide your own 'TChan':
+--
+-- > import Control.Concurrent.STM (newTChanIO)
+-- > chan <- newTChanIO
+-- > watchMarkdownWith "./log" chan
+-- > -- chan now receives file paths as they change
 module Grepl.Watcher
   ( watchMarkdown,
     watchMarkdownWith,

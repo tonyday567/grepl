@@ -1,3 +1,44 @@
+-- |
+-- Module      : Grepl
+-- Copyright   : (c) 2026 Tony Day
+-- License     : BSD-3-Clause
+-- Maintainer  : tonyday567@gmail.com
+--
+-- File-based message passing protocol for querying GHCi instances.
+--
+-- = Overview
+--
+-- @Grepl@ abstracts cabal-repl process management for agentic workflows.
+-- It uses named pipes (FIFOs) to decouple process I/O, enabling reliable
+-- interaction with console applications in stateful, asynchronous agent contexts.
+--
+-- = Usage
+--
+-- Spawn a cabal-repl session with default configuration:
+--
+-- > import Grepl
+-- > ph <- channel defaultChannelConfig
+--
+-- Or use custom configuration:
+--
+-- > let cfg = ChannelConfig
+-- >       { processCommand = "cabal repl"
+-- >       , projectDir = "."
+-- >       , stdinPath = "/tmp/ghci-in"
+-- >       , stdoutPath = "./log/cabal-repl-stdout.md"
+-- >       , stderrPath = "./log/cabal-repl-stderr.md"
+-- >       }
+-- > ph <- channel cfg
+--
+-- = Design
+--
+-- Named pipes provide stable I/O decoupling for agent workflows:
+--
+-- - Agents write to stdin FIFO without blocking on console buffering
+-- - Stdout and stderr are logged to files for inspection and history
+-- - Process lifecycle is independent of I/O, supporting multiplexing
+--
+-- See "Grepl.Watcher" for watching markdown log files in response to agent queries.
 module Grepl
   ( ChannelConfig (..),
     defaultChannelConfig,
