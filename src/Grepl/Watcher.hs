@@ -1,16 +1,17 @@
 module Grepl.Watcher
-  ( watchMarkdown
-  , watchMarkdownWith
-  ) where
+  ( watchMarkdown,
+    watchMarkdownWith,
+  )
+where
 
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async (async)
+import Control.Concurrent.STM (TChan, atomically, newTChanIO, writeTChan)
+import Control.Monad (forever)
+import Data.List (isInfixOf)
+import Data.Maybe (isJust)
 import System.FSNotify
 import System.FilePath (takeExtension, takeFileName)
-import Control.Concurrent.Async (async)
-import Control.Monad (forever)
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.STM (TChan, newTChanIO, writeTChan, atomically)
-import Data.Maybe (isJust)
-import Data.List (isInfixOf)
 
 -- | Check if filename is markdown (.md extension)
 isMarkdownFile :: FilePath -> Bool
@@ -22,9 +23,9 @@ isStdout fp = not ("stderr" `isInfixOf` takeFileName fp)
 
 -- | Filter for .md file events (Added or Modified only, stdout files only)
 isMarkdownEvent :: Event -> Maybe FilePath
-isMarkdownEvent (Added fp _ IsFile) = 
+isMarkdownEvent (Added fp _ IsFile) =
   if isMarkdownFile fp && isStdout fp then Just fp else Nothing
-isMarkdownEvent (Modified fp _ IsFile) = 
+isMarkdownEvent (Modified fp _ IsFile) =
   if isMarkdownFile fp && isStdout fp then Just fp else Nothing
 isMarkdownEvent _ = Nothing
 
@@ -46,18 +47,19 @@ watchMarkdownWith :: FilePath -> TChan String -> IO ()
 watchMarkdownWith watchdir chan = do
   _ <- async $ withManager $ \mgr -> do
     -- Set up the watcher with filter and handler
-    _ <- watchDir 
-      mgr 
-      watchdir 
-      (isJust . isMarkdownEvent)  -- predicate: only fire on matching events
-      (handleEvent chan)           -- action: push to chan
-    -- Keep watcher thread alive
+    _ <-
+      watchDir
+        mgr
+        watchdir
+        (isJust . isMarkdownEvent) -- predicate: only fire on matching events
+        (handleEvent chan) -- action: push to chan
+        -- Keep watcher thread alive
     forever $ threadDelay 1000000
   pure ()
 
 -- | Handle a file event by pushing the filepath to the TChan
 handleEvent :: TChan String -> Event -> IO ()
-handleEvent chan e = 
+handleEvent chan e =
   case isMarkdownEvent e of
     Just fp -> atomically $ writeTChan chan fp
     Nothing -> pure ()
