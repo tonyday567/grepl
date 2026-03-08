@@ -5,7 +5,7 @@ license: BSD-3-Clause
 license-file: LICENSE
 copyright: (c) 2026
 category: language
-author: Anonymous
+author: Tony Day
 maintainer: tonyday567@gmail.com
 synopsis: General REPL - Query tool for GHCi sessions
 description:
@@ -13,6 +13,8 @@ description:
   Used for agentic type wrangling and interactive code exploration.
 
 build-type: Simple
+extra-doc-files: CHANGELOG.md
+
 tested-with:
   ghc ==9.14.1
 
