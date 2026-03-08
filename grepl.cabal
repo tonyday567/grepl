@@ -16,7 +16,9 @@ build-type: Simple
 extra-doc-files: CHANGELOG.md
 
 tested-with:
-  ghc ==9.14.1
+  ghc ==9.14.1,
+  ghc ==9.12.2,
+  ghc ==9.10.1
 
 common ghc-options-stanza
   ghc-options:
