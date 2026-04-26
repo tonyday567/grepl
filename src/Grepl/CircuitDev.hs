@@ -60,10 +60,10 @@ where
 import Circuit
 import Circuit.Circuit hiding (lower)
 import Circuit.Traced
-import Control.Arrow (Kleisli (..), runKleisli)
+import Control.Arrow (Kleisli (..))
 import Control.Category (Category (..))
 import qualified Circuit.Circuit as CC
-import qualified Data.ByteString.Char8 as BS
+
 import System.Posix.Pty
 import System.Process (ProcessHandle)
 import Prelude hiding (id, (.))
