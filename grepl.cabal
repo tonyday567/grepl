@@ -46,6 +46,7 @@ library
 
   exposed-modules:
     Grepl
+    Grepl.CircuitDev
     Grepl.Repl
     Grepl.Watcher
 
