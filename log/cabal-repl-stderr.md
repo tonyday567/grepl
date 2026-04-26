@@ -52,3 +52,39 @@ src/Repl.hs:11:1: warning: [GHC-66111] [-Wunused-imports]
 11 | import Data.List (isInfixOf)
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+src/Grepl/Merger.hs:31:46: warning: [GHC-38856] [-Wunused-imports]
+    The import of ‘void’ from module ‘Control.Monad’ is redundant
+   |
+31 | import Control.Monad (forever, when, unless, void)
+   |                                              ^^^^
+
+src/Grepl/Merger.hs:39:1: warning: [GHC-40910] [-Wunused-top-binds]
+    Defined but not used: ‘ensureFifo’
+   |
+39 | ensureFifo path = do
+   | ^^^^^^^^^^
+
+src/Grepl.hs:51:1: warning: [GHC-66111] [-Wunused-imports]
+    The import of ‘Control.Concurrent’ is redundant
+      except perhaps to import instances from ‘Control.Concurrent’
+    To import instances alone, use: import Control.Concurrent()
+   |
+51 | import Control.Concurrent (threadDelay)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src/Grepl.hs:52:1: warning: [GHC-66111] [-Wunused-imports]
+    The import of ‘Control.Concurrent.Async’ is redundant
+      except perhaps to import instances from ‘Control.Concurrent.Async’
+    To import instances alone, use: import Control.Concurrent.Async()
+   |
+52 | import Control.Concurrent.Async (async, race)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+src/Grepl.hs:54:1: warning: [GHC-66111] [-Wunused-imports]
+    The import of ‘Data.List’ is redundant
+      except perhaps to import instances from ‘Data.List’
+    To import instances alone, use: import Data.List()
+   |
+54 | import Data.List (isInfixOf)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+

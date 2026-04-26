@@ -16,7 +16,6 @@
 --
 -- Spawn a cabal-repl session with default configuration:
 --
--- > import Grepl
 -- > ph <- channel defaultChannelConfig
 --
 -- Or use custom configuration:
@@ -56,6 +55,11 @@ import System.IO
 import System.Process
 
 -- | Configuration for the cabal-repl channel
+--
+-- Specifies process command, working directory, and named pipe paths.
+--
+-- >>> defaultChannelConfig
+-- ChannelConfig {processCommand = "cabal repl", projectDir = ".", stdinPath = "/tmp/ghci-in", stdoutPath = "./log/cabal-repl-stdout.md", stderrPath = "./log/cabal-repl-stderr.md"}
 data ChannelConfig = ChannelConfig
   { -- | Command to run (e.g., "cabal repl")
     processCommand :: String,
@@ -71,6 +75,10 @@ data ChannelConfig = ChannelConfig
   deriving (Show, Eq)
 
 -- | Default channel configuration
+--
+-- Runs @cabal repl@ with pipes in /tmp and logs in ./log/
+--
+-- Suitable for library REPL sessions in the current project.
 defaultChannelConfig :: ChannelConfig
 defaultChannelConfig =
   ChannelConfig
@@ -82,6 +90,11 @@ defaultChannelConfig =
     }
 
 -- | Executable channel configuration
+--
+-- Runs @cabal repl grepl-explore@ with separate pipe paths.
+--
+-- Suitable for executable target REPL sessions; uses different pipe names
+-- to avoid conflicts with 'defaultChannelConfig'.
 exeChannelConfig :: ChannelConfig
 exeChannelConfig =
   ChannelConfig
@@ -92,7 +105,9 @@ exeChannelConfig =
       stderrPath = "./log/cabal-repl-exe-stderr.md"
     }
 
--- | Ensure a FIFO exists, creating it if necessary
+-- | Ensure a FIFO exists, creating it if necessary via @mkfifo@
+--
+-- Idempotent: calling multiple times on the same path is safe.
 ensureFifo :: FilePath -> IO ()
 ensureFifo path = do
   exists <- doesFileExist path
@@ -101,10 +116,21 @@ ensureFifo path = do
 
 -- | Start a cabal repl session with named pipes
 --
--- Creates stdin FIFO if it doesn't exist.
--- Opens handles for stdin (FIFO), stdout, and stderr (append mode).
--- Spawns the process with those handles wired.
--- Returns a ProcessHandle to the running process.
+-- Creates the stdin FIFO if it doesn't exist, opens log files for appending,
+-- and spawns the process with no buffering on output handles.
+--
+-- Returns a 'ProcessHandle' for the running cabal repl process.
+--
+-- The process reads queries from the stdin FIFO and logs output to markdown files.
+-- Agents write queries via 'System.IO.writeFile' to 'stdinPath' and read results
+-- from the logged files as they accumulate.
+--
+-- Example: Start default library REPL
+--
+-- > ph <- channel defaultChannelConfig
+-- > -- Now GHCi is listening on /tmp/ghci-in for queries
+-- > -- Results appear in ./log/cabal-repl-stdout.md and ./log/cabal-repl-stderr.md
+--
 channel :: ChannelConfig -> IO ProcessHandle
 channel cfg = do
   -- Create stdin FIFO if it doesn't exist

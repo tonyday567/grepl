@@ -18,13 +18,11 @@
 --
 -- Watch a directory and react to changes:
 --
--- > import Grepl.Watcher
 -- > chan <- watchMarkdown "./log"
 -- > -- Now read file paths from chan as markdown files are modified
 --
 -- Or provide your own 'TChan':
 --
--- > import Control.Concurrent.STM (newTChanIO)
 -- > chan <- newTChanIO
 -- > watchMarkdownWith "./log" chan
 -- > -- chan now receives file paths as they change
@@ -47,11 +45,17 @@ import System.FilePath (takeExtension, takeFileName)
 isMarkdownFile :: FilePath -> Bool
 isMarkdownFile fp = takeExtension fp == ".md"
 
--- | Check if filename is stdout (not stderr)
+-- | Check if filename is stdout (not stderr log)
+--
+-- Filters out filenames containing "stderr" to ignore error logs.
 isStdout :: FilePath -> Bool
 isStdout fp = not ("stderr" `isInfixOf` takeFileName fp)
 
--- | Filter for .md file events (Added or Modified only, stdout files only)
+-- | Filter for .md file events
+--
+-- Returns 'Just' filepath for Added or Modified events on .md files,
+-- filtering for stdout logs only (no stderr).
+-- Returns 'Nothing' for all other events.
 isMarkdownEvent :: Event -> Maybe FilePath
 isMarkdownEvent (Added fp _ IsFile) =
   if isMarkdownFile fp && isStdout fp then Just fp else Nothing
@@ -61,8 +65,16 @@ isMarkdownEvent _ = Nothing
 
 -- | Watch a directory for .md file changes, push filepaths to a TChan
 --
--- Returns the TChan for reading file paths as they're detected.
--- Runs the watcher in a background async thread.
+-- Returns a new 'TChan' that receives filepaths as markdown files are added or modified.
+-- Runs the watcher in a background async thread, so returns immediately.
+--
+-- Filters for .md files and stdout logs only (ignores stderr).
+--
+-- Example: Watch cabal-repl output logs
+--
+-- > chan <- watchMarkdown "./log"
+-- > -- Background thread now monitors ./log/
+-- > -- Use 'Control.Concurrent.STM.readTChan' to get updated filepaths
 watchMarkdown :: FilePath -> IO (TChan String)
 watchMarkdown watchdir = do
   chan <- newTChanIO
@@ -71,8 +83,12 @@ watchMarkdown watchdir = do
 
 -- | Watch a directory for .md file changes, push to provided TChan
 --
--- Launches the watcher in a background async thread.
--- Returns immediately.
+-- Launches the watcher in a background async thread. Returns immediately.
+--
+-- Pushes filepaths to the channel as markdown files are added or modified.
+-- Ignores non-.md files and stderr logs.
+--
+-- Useful when you already have a 'TChan' to manage (e.g., shared between agents).
 watchMarkdownWith :: FilePath -> TChan String -> IO ()
 watchMarkdownWith watchdir chan = do
   _ <- async $ withManager $ \mgr -> do
