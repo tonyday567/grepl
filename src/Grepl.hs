@@ -46,10 +46,7 @@ module Grepl
   )
 where
 
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async (async, race)
 import Control.Monad (unless)
-import Data.List (isInfixOf)
 import System.Directory (doesFileExist)
 import System.IO
 import System.Process

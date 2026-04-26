@@ -8,7 +8,7 @@ import Control.Concurrent.Async (async)
 import Control.Concurrent.STM (TChan, atomically, readTChan)
 import Control.Monad (forever)
 import Control.Monad.IO.Class (liftIO)
-import Data.List (intercalate, nub)
+
 import Data.Time (getCurrentTime)
 import GHC.Generics
 import Grepl
@@ -85,7 +85,7 @@ runChannel :: Int -> ChannelConfig -> IO ()
 runChannel keepAlive cfg = do
   hPutStrLn stderr $ "Starting channel with keepAlive=" ++ show keepAlive ++ "s..."
 
-  h <- channel cfg
+  _ <- channel cfg
   hPutStrLn stderr "✓ Channel started"
 
   let waitMs = keepAlive * 1000000
