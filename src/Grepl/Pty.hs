@@ -28,10 +28,65 @@
 -- For agent interaction, use @startRepl@ and @sendCommand@:
 --
 -- @
--- ghci> sess <- startRepl "cabal" ["repl"] "ghci> " 5000
+-- ghci> sess <- startRepl "cabal" ["repl"] "ghci> " 5000000  -- 5 second timeout
 -- ghci> result <- sendCommand sess "1 + 1"
+-- ReplResult
+--   { rplCommand = "1 + 1"
+--   , rplOutput = "2"
+--   , rplPrompt = "ghci> "
+--   , rplSuccess = True
+--   , rplDuration = 234  -- milliseconds
+--   , rplError = Nothing
+--   }
 -- ghci> closeRepl sess
 -- @
+--
+-- The session automatically suppresses warnings on startup (see 'defaultSetupCommands'),
+-- resulting in clean output without noise.
+--
+-- = Startup Behavior
+--
+-- When you call @startRepl cmd args prompt timeout@:
+--
+-- 1. Spawns a PTY process (e.g., @cabal repl@)
+-- 2. Waits 300ms for process startup
+-- 3. Sends 'defaultSetupCommands' to suppress warnings:
+--    - @:set -Wno-type-defaults@
+--    - @:set -Wno-unused-matches@
+--    - @:set prompt "ghci> "@
+-- 4. Waits 200ms for setup to complete
+-- 5. Returns ready 'ReplSession'
+--
+-- Result: clean REPL output without warning clutter
+--
+-- = Output Comparison
+--
+-- __Without setup commands (noisy):__
+--
+-- @
+-- ghci> 1 + 1
+-- <interactive>:1:1: warning: [-Wtype-defaults]
+--     Defaulting the type variable 'a0' to type 'Integer'
+--       arising from a use of 'it'
+--     In a stmt of an interactive GHCi command: print it
+-- 2
+-- @
+--
+-- __With setup commands (clean):__
+--
+-- @
+-- ghci> 1 + 1
+-- 2
+-- @
+--
+-- = Streaming Architecture
+--
+-- The PTY is a bidirectional, asynchronous communication channel:
+--
+-- - Effects leak across prompt boundaries by design (use 'readWithTimeout' for policy-driven capping)
+-- - The @ghci>@ prompt is a 'Ready' tag, not termination
+-- - 'sendCommand' uses 'readUntilPrompt' to collect output with timeout
+-- - 'readWithTimeout' waits for silence after Ready (1/10 of primary timeout)
 --
 -- = Workflow
 --
@@ -167,6 +222,27 @@ data ReplSession = ReplSession
   }
 
 -- | Default setup commands to suppress noise (type-defaults, unused-matches warnings)
+--
+-- These are sent automatically by 'startRepl' to quiet the REPL on startup.
+-- Includes:
+--
+-- - @:set -Wno-type-defaults@ — suppress type inference messages
+-- - @:set -Wno-unused-matches@ — suppress pattern match warnings  
+-- - @:set prompt "ghci> "@ — enforce consistent prompt
+--
+-- Example output comparison:
+--
+-- Without setup (noisy):
+--
+-- > ghci> 1 + 1
+-- > <interactive>:1:1: warning: [-Wtype-defaults]
+-- >     Defaulting the type variable 'a0' to type 'Integer'...
+-- > 2
+--
+-- With setup (quiet):
+--
+-- > ghci> 1 + 1
+-- > 2
 defaultSetupCommands :: [Text]
 defaultSetupCommands =
   [ T.pack ":set -Wno-type-defaults"
@@ -175,15 +251,50 @@ defaultSetupCommands =
   ]
 
 -- | Send setup commands to a PTY (e.g. :set directives)
--- Waits briefly after each command to let GHCi process it
+--
+-- Writes each command to the PTY with 100ms spacing to allow GHCi to process each one.
+-- Useful for suppressing warnings, setting options, or configuring the REPL environment.
+--
+-- Example:
+--
+-- > pty <- fst <$> spawnWithPty Nothing True "cabal" ["repl"] (80, 24)
+-- > sendSetupCommands pty [":set prompt \">>> \"", ":set +s"]
 sendSetupCommands :: Pty -> [Text] -> IO ()
 sendSetupCommands pty' cmds = do
   forM_ cmds $ \cmd -> do
     writePty pty' (TE.encodeUtf8 cmd <> BS8.pack "\n")
     threadDelay 100000  -- 100ms between commands
 
--- | Start a new stateful REPL session (e.g. @"cabal" ["repl", "mylib"]@)
--- Automatically sends default setup commands to suppress warnings
+-- | Start a new stateful REPL session
+--
+-- Spawns a PTY process (e.g., @cabal repl@), waits for startup, sends 'defaultSetupCommands'
+-- to suppress warnings, and returns a stateful session for turn-by-turn interaction.
+--
+-- Parameters:
+--
+-- - @cmd@: Command to run (e.g., "cabal")
+-- - @args@: Command arguments (e.g., ["repl", "mylib"])
+-- - @initialPrompt@: Expected prompt to wait for (e.g., "ghci> ")
+-- - @timeoutMs@: Timeout in milliseconds for 'sendCommand' operations
+--
+-- Example:
+--
+-- > do
+-- >   sess <- startRepl "cabal" ["repl"] "ghci> " 5000000  -- 5 second timeout
+-- >   result1 <- sendCommand sess "1 + 1"
+-- >   result2 <- sendCommand sess ":type length"
+-- >   closeRepl sess
+--
+-- Startup sequence:
+--
+-- 1. Spawn PTY process
+-- 2. Wait 300ms for process startup
+-- 3. Send 'defaultSetupCommands' (one per 100ms)
+-- 4. Wait 200ms for setup to complete
+-- 5. Return session ready for interaction
+--
+-- The 'defaultSetupCommands' automatically suppress type-defaults and unused-matches warnings,
+-- resulting in clean output.
 startRepl :: FilePath -> [String] -> Text -> Int -> IO ReplSession
 startRepl cmd args initialPrompt timeoutMs = do
   (pty', _ph) <- spawnWithPty Nothing True cmd args (80, 24)
@@ -195,6 +306,28 @@ startRepl cmd args initialPrompt timeoutMs = do
   pure $ ReplSession pty' initialPrompt timeoutMs
 
 -- | Send one command and wait for the REPL to finish processing it
+--
+-- Writes the command to the REPL's stdin, then reads output until the prompt reappears
+-- or timeout expires. Returns a 'ReplResult' with command, output, duration, and success status.
+--
+-- The output includes any warnings or errors from the REPL, cleaned of the echoed command
+-- and prompt. Use 'rplSuccess' to check if the command completed without timeout.
+--
+-- Example:
+--
+-- > sess <- startRepl "cabal" ["repl"] "ghci> " 5000000
+-- > result <- sendCommand sess "1 + 1"
+-- > print $ rplOutput result  -- "2"
+-- > print $ rplDuration result  -- milliseconds elapsed
+--
+-- Typical output (with 'defaultSetupCommands', clean):
+--
+-- > λ> sendCommand sess "[1,2,3] ++ [4,5]"
+-- > ReplResult { rplOutput = "[1,2,3,4,5]", rplSuccess = True, ... }
+--
+-- If timeout expires:
+--
+-- > ReplResult { rplSuccess = False, rplError = Just "Timeout...", ... }
 sendCommand :: ReplSession -> Text -> IO ReplResult
 sendCommand sess cmd = do
   start <- getCurrentTime
@@ -246,7 +379,26 @@ readUntilPrompt pty' _expectedPrompt timeoutMs = do
 
 -- | Strip ANSI escape codes from ByteString
 --
--- Removes sequences like \ESC[...m, \ESC[...h, \ESC[...l, etc.
+-- Removes sequences like \ESC[...m (color), \ESC[...h (mode set), \ESC[...l (mode reset), etc.
+-- Any sequence \ESC[ followed by characters until a letter (A-Z, a-z) is removed.
+--
+-- Examples:
+--
+-- Plain text passes through unchanged:
+--
+-- >>> import qualified Data.ByteString.Char8 as BS
+-- >>> stripAnsi (BS.pack "hello")
+-- "hello"
+--
+-- Color codes are stripped:
+--
+-- >>> stripAnsi (BS.pack "\27[35mred\27[0m")
+-- "red"
+--
+-- Mode sequences (ESC[?1h) are stripped:
+--
+-- >>> stripAnsi (BS.pack "\27[?1hghci> ")
+-- "ghci> "
 stripAnsi :: BS.ByteString -> BS.ByteString
 stripAnsi bs = BS.pack $ go (BS.unpack bs)
   where
@@ -260,9 +412,26 @@ stripAnsi bs = BS.pack $ go (BS.unpack bs)
 
 -- | Read from PTY with timeout policy that waits for silence after Ready
 --
--- Policy: collect chunks until Ready (ghci>) appears, then wait for silence
--- (silence timeout = 1/10 of the primary timeout) before returning.
--- This allows trailing effects after the prompt to be captured.
+-- This implements the policy-driven capping described in the architecture:
+--
+-- - Collects chunks from PTY until Ready (ghci>, Prelude>) is detected
+-- - After Ready, waits for silence (1/10 of primary timeout) before returning
+-- - Honors primary timeout on primary I/O operations
+-- - Returns chunks in original form (ANSI codes intact, not cleaned)
+--
+-- Why this design:
+--
+-- The REPL is not request-response. Effects leak across prompt boundaries.
+-- A @launchMissile :: IO ()@ might still print after ghci> appears.
+-- This policy allows capturing those trailing effects without explicit termination signals.
+--
+-- Example usage with policy:
+--
+-- > -- Optimistic: accept Ready + silence
+-- > chunks <- readWithTimeout pty 1000000  -- 1 second timeout
+--
+-- > -- Semantic: read until specific marker (not shown here)
+-- > -- or coroutine: alternate with agent input (agent-driven pacing)
 readWithTimeout :: Pty -> Int -> IO [BS.ByteString]
 readWithTimeout pty' primaryTimeoutUs = go [] False
   where
@@ -300,6 +469,16 @@ cleanOutput txt prompt =
   in T.strip noPrompt
 
 -- | Gracefully close the session
+--
+-- Sends @:quit@ to the REPL, waits briefly for shutdown, and the PTY is
+-- automatically closed when the process exits.
+--
+-- Example:
+--
+-- > do
+-- >   sess <- startRepl "cabal" ["repl"] "ghci> " 5000000
+-- >   r1 <- sendCommand sess "length [1,2,3]"
+-- >   closeRepl sess  -- sends :quit, waits, exits
 closeRepl :: ReplSession -> IO ()
 closeRepl sess = do
   writePty (pty sess) (BS8.pack ":quit\n")
