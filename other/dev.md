@@ -1,3 +1,87 @@
+# Development Tasks
+
+## Immediate Priorities (From Live PTY Session)
+
+Working session shows PTY is functional. Three concrete tasks to unlock `readUntilPrompt`:
+
+### 1. ANSI Strip Function
+
+**Problem:** Output is full of `\ESC[...m` escape codes.
+```
+\ESC[?1h\ESC=\ESC[;1m\ESC[35mwarning\ESC[0m
+```
+
+**Task:** Build `stripAnsi :: ByteString -> ByteString`
+- Regex or manual parser for `\ESC[...m` sequences
+- Preserve the actual content: `ghci> `, `2`, etc.
+- Test on real output chunks
+
+**Where:** `Grepl.Pty` module, export it for reuse
+
+### 2. readWithTimeout Implementation
+
+**Problem:** `readPty` returns arbitrary chunks. The result `2` arrived split across 4 chunks. 
+Moreover, `ghci> ` is just `Ready` — effects can continue after the prompt.
+
+**Task:** Implement timeout-based accumulation that detects `Ready` but doesn't assume termination
+```haskell
+readWithTimeout :: Pty -> Int -> IO [ByteString]
+readWithTimeout pty timeoutUs = go [] False
+  where
+    go acc seenReady = do
+      result <- timeout timeoutUs (readPty pty)
+      case result of
+        Nothing -> pure (reverse acc)  -- timeout, return accumulated
+        Just chunk ->
+          let cleaned = stripAnsi chunk
+              readyNow = "ghci> " `BS.isInfixOf` cleaned
+          in if readyNow && seenReady
+             then timeout (timeoutUs `div` 10) (readPty pty) >>= \case
+               Nothing -> pure (reverse (chunk : acc))  -- silence after Ready
+               Just more -> go (more : chunk : acc) True  -- more coming
+             else go (chunk : acc) (seenReady || readyNow)
+```
+
+**Test:** Send `"1 + 1\n"`, collect until Ready + silence, verify final result contains `"2"`.
+
+### 3. Initial Setup Commands
+
+**Problem:** Warnings (like `-Wtype-defaults`) clutter output and should be filtered at spawn time.
+
+**Task:** After `spawnCabalRepl`, immediately send setup commands:
+```haskell
+let setupCommands = [":set -Wno-type-defaults", ...]
+```
+
+**Where:** In `Grepl.Pty` `spawnWithPty` or as a separate "initialize" step.
+
+---
+
+## Architecture Notes
+
+### Streaming is Open-Ended
+
+The REPL is not request-response. `ghci> ` is a **Ready** tag, not a Done signal. 
+Effects leak across prompt boundaries. The cap is a **policy decision**, not structural.
+
+### TChan for Decoupling
+
+The PTY reader runs forever on a background thread, tagging chunks as they arrive. 
+The consumer reads from `TChan` with a timeout policy. This decouples producer 
+(streaming input) from consumer (policy-driven collection).
+
+### Policy-Driven Capping
+
+When to stop reading?
+- Timeout silence after Ready
+- Semantic signal (computation complete)
+- Next User prompt appears
+- Heuristic: effects are fast, cap immediately after Ready
+
+The orchestrator picks the policy. The stream architecture supports all of them.
+
+---
+
 ## Analysis
 
 ---
