@@ -45,11 +45,12 @@ library
     posix-pty >=0.2 && <0.3,
     process >=1.6 && <1.7,
     stm >=2.5 && <2.6,
+    text >=1.2 && <2.2,
+    time >=1.9 && <1.10,
 
   exposed-modules:
-    Grepl
-    Grepl.CircuitDev
-    Grepl.Repl
+    Grepl.Fifo
+    Grepl.Pty
     Grepl.Watcher
 
 executable grepl-explore

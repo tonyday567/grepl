@@ -1,14 +1,14 @@
 -- |
--- Module      : Grepl
+-- Module      : Grepl.Fifo
 -- Copyright   : (c) 2026 Tony Day
 -- License     : BSD-3-Clause
 -- Maintainer  : tonyday567@gmail.com
 --
--- File-based message passing protocol for querying GHCi instances.
+-- File-based message passing protocol for querying GHCi instances using named pipes (FIFOs).
 --
 -- = Overview
 --
--- @Grepl@ abstracts cabal-repl process management for agentic workflows.
+-- @Grepl.Fifo@ abstracts cabal-repl process management for agentic workflows.
 -- It uses named pipes (FIFOs) to decouple process I/O, enabling reliable
 -- interaction with console applications in stateful, asynchronous agent contexts.
 --
@@ -38,7 +38,7 @@
 -- - Process lifecycle is independent of I/O, supporting multiplexing
 --
 -- See "Grepl.Watcher" for watching markdown log files in response to agent queries.
-module Grepl
+module Grepl.Fifo
   ( ChannelConfig (..),
     defaultChannelConfig,
     exeChannelConfig,

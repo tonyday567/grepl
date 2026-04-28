@@ -11,7 +11,7 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.Time (getCurrentTime)
 import GHC.Generics
-import Grepl
+import Grepl.Fifo
 import Grepl.Watcher
 import Options.Applicative
 import Options.Applicative.Help.Pretty
