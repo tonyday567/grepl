@@ -18,29 +18,20 @@ Working session shows PTY is functional. Three concrete tasks to unlock `readUnt
 
 ### 2. readWithTimeout Implementation
 
-**Problem:** `readPty` returns arbitrary chunks. The result `2` arrived split across 4 chunks. 
-Moreover, `ghci> ` is just `Ready` — effects can continue after the prompt.
+✅ **DONE**
 
-**Task:** Implement timeout-based accumulation that detects `Ready` but doesn't assume termination
-```haskell
-readWithTimeout :: Pty -> Int -> IO [ByteString]
-readWithTimeout pty timeoutUs = go [] False
-  where
-    go acc seenReady = do
-      result <- timeout timeoutUs (readPty pty)
-      case result of
-        Nothing -> pure (reverse acc)  -- timeout, return accumulated
-        Just chunk ->
-          let cleaned = stripAnsi chunk
-              readyNow = "ghci> " `BS.isInfixOf` cleaned
-          in if readyNow && seenReady
-             then timeout (timeoutUs `div` 10) (readPty pty) >>= \case
-               Nothing -> pure (reverse (chunk : acc))  -- silence after Ready
-               Just more -> go (more : chunk : acc) True  -- more coming
-             else go (chunk : acc) (seenReady || readyNow)
-```
+**Implementation:** Policy-driven timeout with silence detection
+- Accumulates chunks from PTY using primary timeout
+- Detects Ready (ghci>, Prelude>) by cleaning ANSI codes first
+- After first Ready, uses 1/10 timeout to catch trailing effects
+- Returns chunks when silence detected after Ready
+- Handles primary timeout expiry (returns accumulated chunks)
 
-**Test:** Send `"1 + 1\n"`, collect until Ready + silence, verify final result contains `"2"`.
+**Function:** `readWithTimeout :: Pty -> Int -> IO [ByteString]`
+- Parameter: microseconds for primary timeout
+- Returns: list of ByteString chunks (not stripped, original)
+
+**Design principle:** The cap is a policy decision. Ready is not termination.
 
 ### 3. Initial Setup Commands
 

@@ -49,6 +49,8 @@ module Grepl.Pty
     startRepl,
     sendCommand,
     closeRepl,
+    defaultSetupCommands,
+    sendSetupCommands,
     -- * Streaming and parsing helpers
     stripAnsi,
     readUntilPrompt,
@@ -81,6 +83,7 @@ import Circuit.Circuit hiding (lower)
 import Circuit.Traced hiding (prompt)
 import Control.Arrow (Kleisli (..))
 import Control.Category (Category (..))
+import Control.Monad (forM_)
 import qualified Circuit.Circuit as CC
 
 import System.Posix.Pty (Pty, writePty, readPty, tryReadPty, closePty, spawnWithPty)
@@ -163,12 +166,32 @@ data ReplSession = ReplSession
   , timeoutMs  :: Int
   }
 
+-- | Default setup commands to suppress noise (type-defaults, unused-matches warnings)
+defaultSetupCommands :: [Text]
+defaultSetupCommands =
+  [ T.pack ":set -Wno-type-defaults"
+  , T.pack ":set -Wno-unused-matches"
+  , T.pack ":set prompt \"ghci> \""
+  ]
+
+-- | Send setup commands to a PTY (e.g. :set directives)
+-- Waits briefly after each command to let GHCi process it
+sendSetupCommands :: Pty -> [Text] -> IO ()
+sendSetupCommands pty' cmds = do
+  forM_ cmds $ \cmd -> do
+    writePty pty' (TE.encodeUtf8 cmd <> BS8.pack "\n")
+    threadDelay 100000  -- 100ms between commands
+
 -- | Start a new stateful REPL session (e.g. @"cabal" ["repl", "mylib"]@)
+-- Automatically sends default setup commands to suppress warnings
 startRepl :: FilePath -> [String] -> Text -> Int -> IO ReplSession
 startRepl cmd args initialPrompt timeoutMs = do
   (pty', _ph) <- spawnWithPty Nothing True cmd args (80, 24)
   -- Wait for initial prompt to appear
-  threadDelay 200000  -- 200ms
+  threadDelay 300000  -- 300ms for cabal repl startup
+  -- Send setup commands to suppress warnings
+  sendSetupCommands pty' defaultSetupCommands
+  threadDelay 200000  -- wait for setup to finish
   pure $ ReplSession pty' initialPrompt timeoutMs
 
 -- | Send one command and wait for the REPL to finish processing it
