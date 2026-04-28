@@ -35,14 +35,22 @@ Working session shows PTY is functional. Three concrete tasks to unlock `readUnt
 
 ### 3. Initial Setup Commands
 
-**Problem:** Warnings (like `-Wtype-defaults`) clutter output and should be filtered at spawn time.
+✅ **DONE**
 
-**Task:** After `spawnCabalRepl`, immediately send setup commands:
-```haskell
-let setupCommands = [":set -Wno-type-defaults", ...]
-```
+**Implementation:** Automatic setup on `startRepl`
+- `defaultSetupCommands`: list of `:set` directives (suppressions + prompt config)
+  - `:set -Wno-type-defaults`
+  - `:set -Wno-unused-matches`
+  - `:set prompt "ghci> "` (enforce consistent prompt)
+- `sendSetupCommands pty cmds`: sends commands with 100ms spacing
+- `startRepl`: automatically sends `defaultSetupCommands` after spawn
 
-**Where:** In `Grepl.Pty` `spawnWithPty` or as a separate "initialize" step.
+**Result:** cabal repl starts clean without warning noise.
+
+**Functions:**
+- `defaultSetupCommands :: [Text]` 
+- `sendSetupCommands :: Pty -> [Text] -> IO ()`
+- `startRepl` now includes automatic setup
 
 ---
 
@@ -255,4 +263,46 @@ chan <- watchMarkdown "./log"
 
 -- Analyze results, branch on outcome, re-query as needed
 ```
+
+---
+
+## Completed Foundation Tasks
+
+✅ **stripAnsi** — removes ANSI escape codes from PTY output
+- Handles `\ESC[...m` sequences (color, style codes)
+- Preserves actual content
+- Used for prompt detection and logging
+
+✅ **readWithTimeout** — policy-driven PTY reading
+- Accumulates chunks until Ready (ghci>)
+- Waits for silence (1/10 timeout) after Ready
+- Captures trailing effects that leak past the prompt
+- Honors primary timeout on primary I/O
+
+✅ **defaultSetupCommands** — quiet REPL startup
+- `:set -Wno-type-defaults` — suppress inference noise
+- `:set -Wno-unused-matches` — suppress pattern warnings
+- `:set prompt "ghci> "` — enforce consistent prompt
+- Automatically sent by `startRepl`
+
+### Testing the Foundation
+
+```haskell
+-- In ghci:
+let sess <- startRepl "cabal" ["repl"] "ghci> " 5000000
+result <- sendCommand sess "1 + 1"
+closeRepl sess
+```
+
+The PTY interface is now clean and ready for next-layer work:
+- Build `Tagged` stream consumer from raw ByteString chunks
+- Implement TChan-based producer/consumer split
+- Layer Circuit on top of the streaming interface
+
+### Next Work
+
+1. **Tagged stream consumer** — parse chunks into `(Tag, Text)` events
+2. **TChan watcher** — background PTY reader pushing to channel
+3. **Circuit layer** — bidirectional async channel as Circuit term
+4. **Agent integration** — turn `Circuit (Kleisli IO) t Tagged Tagged` into an operational Agent
 
