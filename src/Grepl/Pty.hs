@@ -49,6 +49,11 @@ module Grepl.Pty
     startRepl,
     sendCommand,
     closeRepl,
+    -- * Streaming and parsing helpers
+    stripAnsi,
+    readUntilPrompt,
+    detectPrompt,
+    cleanOutput,
     -- * Core circuit types and functions (re-exported from modules)
     module Circuit,
     module Circuit.Circuit,
@@ -181,9 +186,12 @@ sendCommand sess cmd = do
       let cleaned = cleanOutput out (currentPrompt sess)
       pure $ ReplResult cmd cleaned newPrompt True dur Nothing
 
--- | Read from PTY until we see the expected prompt (or timeout)
+-- | Read from PTY until we see a prompt (or timeout)
+--
+-- This is a simple timeout-based reader. For policy-driven capping
+-- (detecting Ready vs other signals), see readWithPolicy.
 readUntilPrompt :: Pty -> Text -> Int -> IO (Either Text (Text, Text))
-readUntilPrompt pty' expectedPrompt timeoutMs = do
+readUntilPrompt pty' _expectedPrompt timeoutMs = do
   let loop :: BS.ByteString -> UTCTime -> IO (Either Text (Text, Text))
       loop acc startTime = do
         now <- getCurrentTime
@@ -210,6 +218,20 @@ readUntilPrompt pty' expectedPrompt timeoutMs = do
                       Nothing -> loop acc' startTime
   start <- getCurrentTime
   loop BS.empty start
+
+-- | Strip ANSI escape codes from ByteString
+--
+-- Removes sequences like \ESC[...m, \ESC[...h, \ESC[...l, etc.
+stripAnsi :: BS.ByteString -> BS.ByteString
+stripAnsi bs = BS.pack $ go (BS.unpack bs)
+  where
+    go [] = []
+    go (27 : 91 : rest) =  -- ESC ( = 27, [ = 91
+      let (_, remainder) = break (\c -> c >= 65 && c <= 122) rest -- stop at letter (A-Z, a-z)
+      in case remainder of
+        [] -> []  -- malformed, skip
+        (_ : rest') -> go rest'  -- skip the letter and continue
+    go (c : rest) = c : go rest
 
 -- | Detect any known GHCi prompt (extend this list as needed)
 detectPrompt :: Text -> Maybe Text
