@@ -52,6 +52,7 @@ module Grepl.Pty
     -- * Streaming and parsing helpers
     stripAnsi,
     readUntilPrompt,
+    readWithTimeout,
     detectPrompt,
     cleanOutput,
     -- * Core circuit types and functions (re-exported from modules)
@@ -91,6 +92,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import Control.Concurrent (threadDelay)
 import Data.Time (getCurrentTime, diffUTCTime, UTCTime)
+import System.Timeout (timeout)
 
 import Prelude hiding (id, (.))
 
@@ -232,6 +234,33 @@ stripAnsi bs = BS.pack $ go (BS.unpack bs)
         [] -> []  -- malformed, skip
         (_ : rest') -> go rest'  -- skip the letter and continue
     go (c : rest) = c : go rest
+
+-- | Read from PTY with timeout policy that waits for silence after Ready
+--
+-- Policy: collect chunks until Ready (ghci>) appears, then wait for silence
+-- (silence timeout = 1/10 of the primary timeout) before returning.
+-- This allows trailing effects after the prompt to be captured.
+readWithTimeout :: Pty -> Int -> IO [BS.ByteString]
+readWithTimeout pty' primaryTimeoutUs = go [] False
+  where
+    silenceTimeoutUs = primaryTimeoutUs `div` 10  -- 1/10 of primary timeout
+    
+    go acc seenReady = do
+      result <- timeout primaryTimeoutUs (readPty pty')
+      case result of
+        Nothing -> pure (reverse acc)  -- primary timeout expired
+        Just chunk ->
+          let cleaned = TE.decodeUtf8 (stripAnsi chunk)  -- clean for inspection
+              hasReady = T.pack "ghci> " `T.isInfixOf` cleaned || T.pack "Prelude> " `T.isInfixOf` cleaned
+          in if hasReady && seenReady
+             then do
+               -- Already saw Ready once, check for more output with silence timeout
+               moreResult <- timeout silenceTimeoutUs (readPty pty')
+               case moreResult of
+                 Nothing -> pure (reverse (chunk : acc))  -- silence after Ready, done
+                 Just more -> go (more : chunk : acc) True  -- more coming
+             else
+               go (chunk : acc) (seenReady || hasReady)
 
 -- | Detect any known GHCi prompt (extend this list as needed)
 detectPrompt :: Text -> Maybe Text

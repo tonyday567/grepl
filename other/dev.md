@@ -6,17 +6,15 @@ Working session shows PTY is functional. Three concrete tasks to unlock `readUnt
 
 ### 1. ANSI Strip Function
 
-**Problem:** Output is full of `\ESC[...m` escape codes.
-```
-\ESC[?1h\ESC=\ESC[;1m\ESC[35mwarning\ESC[0m
-```
+✅ **DONE**
 
-**Task:** Build `stripAnsi :: ByteString -> ByteString`
-- Regex or manual parser for `\ESC[...m` sequences
-- Preserve the actual content: `ghci> `, `2`, etc.
-- Test on real output chunks
+**Implementation:** Manual parser (no regex dependency)
+- Recognizes `\ESC[` (27, 91) followed by any sequence until A-Z or a-z letter
+- Strips the entire escape sequence, preserves content
+- Tested: `\ESC[35mred\ESC[0m` → `"red"`
+- Exported from `Grepl.Pty`, available in live session
 
-**Where:** `Grepl.Pty` module, export it for reuse
+**Function:** `stripAnsi :: ByteString -> ByteString`
 
 ### 2. readWithTimeout Implementation
 
