@@ -5,19 +5,17 @@
 
 ## design and development
 
-`grepl` is a general repl, abstracting what a practical modern repl entails.
+`grepl` is a general repl, a read-eval-print loop for use with general processes.
 
 Grepl.Fifo uses the system concept of named pipes or FIFOs attached to a Process (using the process library).
 
-Grepl.Pty uses the system concept of a terminal (using the [pty] library).
+Grepl.Cabal applies the generalised repl model on `cabal repl`
 
-Which to use is a subject of ongoing work.
-
-In both cases, the [circuits] library is being used to organize the effects involved.
-
-### Fifo [other/fifo.md]
+### FIFO
 
 The Grepl.Fifo implementation uses **named pipes** (FIFOs) to decouple input/output streams from console applications, enabling agents to multiplex queries across GHCi sessions without blocking on console behavior.
+
+
 
 Core Components
 

@@ -2,23 +2,51 @@
 
 ## Message Bus Architecture: REPL as First-Class Participant
 
-Inverts the subprocess pattern: rather than polling a REPL subprocess, 
-the REPL becomes a message bus node. 
+
+
+A REPL is largely a narrative overlaid on a bidirectional process that consists of:
+
+⟜ a long-lived process, held in an environment.
+⟜ connected by three conduits stdin, stdout & stderr
+⟜ these conduits 
+
+A generalized REPL consists of:
+
+A long-lived backend process (or equivalent stateful computation) that lives in some managed environment.
+
+This could be:
+An external executable (via System.Process).
+An embedded interpreter (e.g., a custom evaluator, GHC API, LuaJIT, etc.).
+A stateful monad transformer stack that persists across interactions.
+Even a remote service over a socket.
+
+Three permanent conduits (stdin, stdout, stderr) that stay open for the lifetime of the session:
+stdin → commands/expressions sent to the backend.
+stdout → normal output / results from the backend.
+stderr → errors, warnings, diagnostics, or side-channel logging.
+
+Bidirectional flow with proper framing / protocol so the frontend can reliably separate:
+Prompts / readiness signals.
+Complete responses vs. streaming output.
+Error vs. normal output.
+Asynchronous messages (e.g., compiler warnings that arrive later).
+
+The narrative layer (the "REPL" part) handles:
+User input (Haskeline / linenoise / brick / etc.).
+Command dispatching (:load, :type, :quit, custom extensions).
+Output rendering, pagination, syntax highlighting.
+Session state (history, variable bindings visible to the user, etc.).
+Error recovery and restart logic.
+
+
+This separation makes it much easier to support multiple backends, embed the REPL in different UIs (terminal, web, IDE), test the backend independently, etc.
 
 **Asymmetric I/O design:**
-- FIFO for stdin (stateful, blocking-tolerant)
-- Append-only markdown for stdout (inspectable history, agent-friendly)
+- FIFO for stdin (stateful, blocking-tolerant, agent freindly)
+- Append-only file for stdout and stderr (broadcast pattern, agent friendly)
 
-Plays to agent strengths instead of fighting them.
-
-**Event semantics evolution:**
-- Current: TChan broadcasts filepath events (content-agnostic)
-- Future: structured, content-aware events (parsed GHCi output, type errors, 
-  successful bindings vs warnings). Enables interception at the semantic level 
-  ("agent reached for Lazy.BS when they meant Strict.BS").
-
-The `isStdout` filter pushes signal/noise separation to the event producer, 
-not the consumer.
+Inverts the subprocess pattern: rather than polling a REPL subprocess, 
+the REPL becomes a message bus node. 
 
 ---
 
